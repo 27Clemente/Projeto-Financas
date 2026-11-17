@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: minhas-financas
+    runtime: python
+    plan: free
+    buildCommand: ""
+    startCommand: python server/app.py
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 10000
+      - key: APP_SECRET
+        generateValue: true
+      - key: PLUGGY_CLIENT_ID
+        sync: false
+      - key: PLUGGY_CLIENT_SECRET
+        sync: false
+      - key: PLUGGY_MODE
+        value: production
