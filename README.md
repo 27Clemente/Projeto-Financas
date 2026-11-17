@@ -43,6 +43,8 @@ Acesse **http://127.0.0.1:3000** e clique em **Conectar banco**.
 
 O ambiente de desenvolvimento utiliza instituições de teste. Para conectar bancos reais, é necessário habilitar o ambiente de produção no Pluggy.
 
+> 🧪 Mesmo em produção, dá para testar sem mexer no banco: em **Conexões**, ligue o interruptor **Mostrar bancos de teste**. Os conectores sandbox usam `user-ok` / `password-ok` / `123456` e a escolha fica salva no navegador.
+
 ## 🧪 Testes
 
 ```bash

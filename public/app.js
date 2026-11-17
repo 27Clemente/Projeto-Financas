@@ -174,6 +174,25 @@ function salvarAparencia() {
 aplicarAparencia();
 sincronizarOpcoes();
 
+/* sandbox */
+
+const CHAVE_SANDBOX = 'financas-sandbox';
+
+function sandboxSalvo() {
+  try {
+    return localStorage.getItem(CHAVE_SANDBOX);
+  } catch {
+    return null;
+  }
+}
+
+function sandboxHabilitado() {
+  const salvo = sandboxSalvo();
+  if (salvo === 'on') return true;
+  if (salvo === 'off') return false;
+  return Boolean(state.status && state.status.includeSandbox);
+}
+
 /* estado e chrome */
 
 const state = {
@@ -234,6 +253,8 @@ function renderBanner() {
 
 async function refreshStatus() {
   state.status = await api('/api/status');
+  const chk = $('#chk-sandbox');
+  if (chk && !sandboxSalvo()) chk.checked = Boolean(state.status.includeSandbox);
   renderBanner();
 }
 
@@ -517,16 +538,21 @@ async function renderConexoes() {
     state.status && (!state.status.configured || devMode)
   );
 
+  const sandbox = sandboxHabilitado();
+  const chk = $('#chk-sandbox');
+  if (chk) chk.checked = sandbox;
+
   const mode = state.status && state.status.mode;
   const modeEl = $('#conn-mode');
   if (modeEl) {
-    modeEl.textContent =
-      mode === 'production'
+    modeEl.textContent = sandbox
+      ? 'Modo teste · bancos sandbox'
+      : mode === 'production'
         ? `Modo produção · ${num.format(state.status.liveConnectors ?? 0)} instituições reais`
         : devMode
           ? 'Modo desenvolvimento · só conectores de teste'
           : 'Modo —';
-    modeEl.className = devMode ? 'mode-warn' : 'muted';
+    modeEl.className = sandbox || devMode ? 'mode-warn' : 'muted';
   }
 
   const data = await api('/api/items');
@@ -667,9 +693,7 @@ async function connect() {
 
     widget = new window.PluggyConnect({
       connectToken: accessToken,
-      // Só lista conectores de teste (sandbox) quando a aplicação é de
-      // desenvolvimento — em Produção isso não é recomendado pela doc.
-      includeSandbox: Boolean(state.status && state.status.includeSandbox),
+      includeSandbox: sandboxHabilitado(),
       language: 'pt',
       theme: 'light',
       onClose: () => setBusy(false),
@@ -740,6 +764,20 @@ async function init() {
   $('#btn-connect-2').onclick = connect;
   $('#btn-sync-all').onclick = syncAll;
   $('#btn-more').onclick = () => loadTransactions(false).catch((e) => toast(e.message, true));
+
+  const chkSandbox = $('#chk-sandbox');
+  if (chkSandbox) {
+    chkSandbox.checked = sandboxHabilitado();
+    chkSandbox.onchange = () => {
+      try {
+        localStorage.setItem(CHAVE_SANDBOX, chkSandbox.checked ? 'on' : 'off');
+      } catch {
+        /* preferência vale só nesta sessão */
+      }
+      renderConexoes().catch((e) => toast(e.message, true));
+      toast(chkSandbox.checked ? 'Bancos de teste ligados.' : 'Bancos de teste desligados.');
+    };
+  }
 
   document.querySelectorAll('.options[data-group]').forEach((grupo) => {
     grupo.addEventListener('click', (e) => {
