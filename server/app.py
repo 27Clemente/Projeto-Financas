@@ -3,10 +3,14 @@
 Uso:  python server/app.py   →  http://127.0.0.1:3000
 """
 
+import hashlib
+import hmac
 import json
 import mimetypes
 import os
 import re
+import secrets
+import sqlite3
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -39,6 +43,79 @@ load_env(ROOT / ".env")
 
 HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = int(os.environ.get("PORT", "3000"))
+
+APP_SECRET = os.environ.get("APP_SECRET", "").strip()
+AUTH_ATIVO = bool(APP_SECRET)
+COOKIE = "financas_sessao"
+SESSION_MAX = 30 * 24 * 3600
+
+
+class NaoAutorizado(Exception):
+    pass
+
+
+def senha_hash(senha, salt=None):
+    salt = salt or secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", senha.encode(), bytes.fromhex(salt), 120_000).hex()
+    return f"{salt}${digest}"
+
+
+def senha_valida(senha, guardado):
+    try:
+        salt, esperado = guardado.split("$", 1)
+        atual = hashlib.pbkdf2_hmac("sha256", senha.encode(), bytes.fromhex(salt), 120_000).hex()
+    except (ValueError, AttributeError):
+        return False
+    return hmac.compare_digest(atual, esperado)
+
+
+def sessao_token(user_id):
+    payload = f"{user_id}|{int(time.time()) + SESSION_MAX}"
+    assinatura = hmac.new(APP_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    return f"{payload}|{assinatura}"
+
+
+def sessao_usuario(token):
+    try:
+        uid, exp, assinatura = token.split("|", 2)
+        payload = f"{uid}|{exp}"
+        esperado = hmac.new(APP_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(assinatura, esperado) or int(exp) < time.time():
+            return None
+        return uid
+    except (ValueError, AttributeError):
+        return None
+
+
+def cookie_valor(handler, nome):
+    for parte in (handler.headers.get("Cookie") or "").split(";"):
+        chave, _, valor = parte.strip().partition("=")
+        if chave == nome:
+            return valor
+    return None
+
+
+def definir_cookie(handler, valor, max_age=SESSION_MAX):
+    seguro = " Secure" if (handler.headers.get("X-Forwarded-Proto") or "").lower() == "https" else ""
+    handler._cookie = (
+        f"{COOKIE}={valor}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}{seguro}"
+    )
+
+
+def usuario_atual(handler):
+    if not AUTH_ATIVO:
+        return "local"
+    uid = sessao_usuario(cookie_valor(handler, COOKIE) or "")
+    if not uid:
+        raise NaoAutorizado()
+    with database.db() as conn:
+        if not conn.execute("SELECT 1 FROM users WHERE id = ?", (uid,)).fetchone():
+            raise NaoAutorizado()
+    return uid
+
+
+def pluggy_user_id(user_id):
+    return "local-user" if user_id == "local" else f"user-{user_id}"
 
 # Development não tem conector Live; 1 já basta para Produção.
 PRODUCTION_CONNECTOR_THRESHOLD = 1
@@ -86,12 +163,12 @@ def current_month():
 # Sincronização: baixa os dados do Pluggy e grava no SQLite local
 # ---------------------------------------------------------------------------
 
-def upsert_item(conn, item):
+def upsert_item(conn, item, user_id):
     connector = item.get("connector") or {}
     conn.execute(
-        """INSERT INTO items (id, connector_id, institution_name, image_url,
+        """INSERT INTO items (id, user_id, connector_id, institution_name, image_url,
                               status, execution_status, error_message, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
              connector_id = excluded.connector_id,
              institution_name = excluded.institution_name,
@@ -101,6 +178,7 @@ def upsert_item(conn, item):
              error_message = excluded.error_message""",
         (
             item.get("id"),
+            user_id,
             connector.get("id"),
             connector.get("name"),
             connector.get("imageUrl"),
@@ -112,7 +190,7 @@ def upsert_item(conn, item):
     )
 
 
-def pull_item_data(item_id, api_key):
+def pull_item_data(item_id, api_key, user_id):
     """Baixa contas, transações e investimentos; grava tudo em uma única transação."""
     started_at = iso(datetime.now(timezone.utc) - timedelta(seconds=5))
     now = iso()
@@ -128,10 +206,10 @@ def pull_item_data(item_id, api_key):
         for acc in accounts:
             credit = acc.get("creditData") or {}
             conn.execute(
-                """INSERT INTO accounts (id, item_id, type, subtype, name, number, balance,
+                """INSERT INTO accounts (id, user_id, item_id, type, subtype, name, number, balance,
                                          currency, owner, credit_limit,
                                          available_credit_limit, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(id) DO UPDATE SET
                      item_id = excluded.item_id, type = excluded.type,
                      subtype = excluded.subtype, name = excluded.name,
@@ -142,6 +220,7 @@ def pull_item_data(item_id, api_key):
                      updated_at = excluded.updated_at""",
                 (
                     acc.get("id"),
+                    user_id,
                     item_id,
                     acc.get("type"),
                     acc.get("subtype"),
@@ -161,9 +240,9 @@ def pull_item_data(item_id, api_key):
             for batch in batches:
                 for tx in batch:
                     conn.execute(
-                        """INSERT INTO transactions (id, item_id, account_id, date, description,
+                        """INSERT INTO transactions (id, user_id, item_id, account_id, date, description,
                                                      amount, category, type, status, updated_at)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                            ON CONFLICT(id) DO UPDATE SET
                              account_id = excluded.account_id, date = excluded.date,
                              description = excluded.description, amount = excluded.amount,
@@ -171,6 +250,7 @@ def pull_item_data(item_id, api_key):
                              status = excluded.status, updated_at = excluded.updated_at""",
                         (
                             tx.get("id"),
+                            user_id,
                             item_id,
                             tx.get("accountId") or account_id,
                             tx.get("date"),
@@ -186,11 +266,11 @@ def pull_item_data(item_id, api_key):
         # --- Investimentos ---
         for inv in investments:
             conn.execute(
-                """INSERT INTO investments (id, item_id, name, code, type, subtype, balance,
+                """INSERT INTO investments (id, user_id, item_id, name, code, type, subtype, balance,
                                             amount_original, amount_profit, annual_rate,
                                             fixed_annual_rate, rate, rate_type, issuer, status,
                                             ref_date, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(id) DO UPDATE SET
                      name = excluded.name, code = excluded.code, type = excluded.type,
                      subtype = excluded.subtype, balance = excluded.balance,
@@ -203,6 +283,7 @@ def pull_item_data(item_id, api_key):
                      ref_date = excluded.ref_date, updated_at = excluded.updated_at""",
                 (
                     inv.get("id"),
+                    user_id,
                     item_id,
                     inv.get("name"),
                     inv.get("code"),
@@ -231,21 +312,26 @@ def pull_item_data(item_id, api_key):
         # instituição deixou de reportar mantêm updated_at antigo e saem
         # aqui — mesmo padrão de transações/investimentos, sem SQL dinâmico.
         conn.execute(
-            "DELETE FROM accounts WHERE item_id = ? "
+            "DELETE FROM accounts WHERE user_id = ? AND item_id = ? "
             "AND (updated_at IS NULL OR updated_at < ?)",
-            (item_id, started_at),
+            (user_id, item_id, started_at),
         )
         conn.execute(
-            "DELETE FROM transactions WHERE item_id = ? AND updated_at < ?",
-            (item_id, started_at),
+            "DELETE FROM transactions WHERE user_id = ? AND item_id = ? AND updated_at < ?",
+            (user_id, item_id, started_at),
         )
         conn.execute(
-            "DELETE FROM investments WHERE item_id = ? AND updated_at < ?",
-            (item_id, started_at),
+            "DELETE FROM investments WHERE user_id = ? AND item_id = ? AND updated_at < ?",
+            (user_id, item_id, started_at),
         )
 
 
-def sync_item(item_id, trigger):
+def sync_item(item_id, trigger, user_id):
+    with database.db() as conn:
+        dono = conn.execute("SELECT user_id FROM items WHERE id = ?", (item_id,)).fetchone()
+    if dono and dono["user_id"] != user_id:
+        raise pluggy.PluggyError("Conexão não encontrada.", "NOT_FOUND", 404)
+
     api_key = pluggy.get_api_key()
     if trigger:
         try:
@@ -269,8 +355,15 @@ def sync_item(item_id, trigger):
     if not item:
         raise pluggy.PluggyError("Conexão não encontrada no Pluggy.", "NOT_FOUND")
 
+    # Item novo (ainda não salvo aqui) precisa vir do connect token desta pessoa.
+    # Algumas respostas do Pluggy não trazem clientUserId; nesse caso seguimos.
+    if not dono:
+        item_uid = item.get("clientUserId")
+        if item_uid and item_uid != pluggy_user_id(user_id):
+            raise pluggy.PluggyError("Conexão não encontrada.", "NOT_FOUND", 404)
+
     with database.db() as conn:
-        upsert_item(conn, item)
+        upsert_item(conn, item, user_id)
 
     if timed_out:
         return {
@@ -288,11 +381,12 @@ def sync_item(item_id, trigger):
             or "A sincronização com o banco falhou.",
         }
 
-    pull_item_data(item_id, api_key)
+    pull_item_data(item_id, api_key, user_id)
     with database.db() as conn:
         conn.execute(
-            "UPDATE items SET last_synced_at = ?, error_message = NULL WHERE id = ?",
-            (iso(), item_id),
+            "UPDATE items SET last_synced_at = ?, error_message = NULL "
+            "WHERE id = ? AND user_id = ?",
+            (iso(), item_id, user_id),
         )
     return {"ok": True, "status": execution_status or "SUCCESS"}
 
@@ -301,13 +395,14 @@ def sync_item(item_id, trigger):
 # Consultas de leitura
 # ---------------------------------------------------------------------------
 
-def get_summary(month):
+def get_summary(month, user_id):
     with database.db() as conn:
         accounts = conn.execute(
             """SELECT COALESCE(SUM(CASE WHEN type = 'BANK' THEN balance END), 0) AS bank_balance,
                       COALESCE(SUM(CASE WHEN type = 'CREDIT' THEN balance END), 0) AS credit_balance,
                       COUNT(*) AS accounts
-               FROM accounts"""
+               FROM accounts WHERE user_id = ?""",
+            (user_id,),
         ).fetchone()
 
         # Open Finance não traz amountProfit; nesse caso usamos balance - amountOriginal.
@@ -323,18 +418,21 @@ def get_summary(month):
                       END), 0) AS profit_base,
                       COUNT(*) AS investments
                FROM investments
-               WHERE status IS NULL OR status = 'ACTIVE'"""
+               WHERE user_id = ? AND (status IS NULL OR status = 'ACTIVE')""",
+            (user_id,),
         ).fetchone()
 
         transactions = conn.execute(
             """SELECT COALESCE(SUM(CASE WHEN amount < 0 THEN -amount END), 0) AS expenses,
                       COALESCE(SUM(CASE WHEN amount > 0 THEN amount END), 0) AS income,
                       COUNT(*) AS transactions
-               FROM transactions WHERE date LIKE ?""",
-            (month + "%",),
+               FROM transactions WHERE user_id = ? AND date LIKE ?""",
+            (user_id, month + "%"),
         ).fetchone()
 
-        items = conn.execute("SELECT COUNT(*) AS n FROM items").fetchone()
+        items = conn.execute(
+            "SELECT COUNT(*) AS n FROM items WHERE user_id = ?", (user_id,)
+        ).fetchone()
 
     profit_base = investments["profit_base"]
     return {
@@ -386,7 +484,7 @@ def _origin_allowed(handler):
     return origin in (f"http://{host}", f"https://{host}")
 
 
-def list_transactions(params):
+def list_transactions(params, user_id):
     month = _p(params, "month")
     type_filter = _p(params, "type")
     category = _p(params, "category")
@@ -395,8 +493,8 @@ def list_transactions(params):
     limit = min(max(_int(_p(params, "limit"), 50), 1), 500)
     offset = max(_int(_p(params, "offset"), 0), 0)
 
-    where = []
-    args = []
+    where = ["t.user_id = ?"]
+    args = [user_id]
     if month:
         where.append("t.date LIKE ?")
         args.append(month + "%")
@@ -473,6 +571,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        if getattr(self, "_cookie", None):
+            self.send_header("Set-Cookie", self._cookie)
+            self._cookie = None
         self._security_headers()
         self.end_headers()
         if self.command != "HEAD":  # HEAD responde só com os cabeçalhos
@@ -520,6 +621,7 @@ class Handler(BaseHTTPRequestHandler):
             raise pluggy.PluggyError("JSON inválido.", "BAD_JSON")
 
     def _dispatch(self):
+        self._cookie = None
         try:
             parts = urlsplit(self.path)
             if parts.path.startswith("/api/"):
@@ -552,20 +654,76 @@ class Handler(BaseHTTPRequestHandler):
         "/api/categories", "/api/transactions", "/api/investments", "/api/items",
     }
 
+    def _registrar(self):
+        body = self._body()
+        email = str(body.get("email") or "").strip().lower()
+        senha = str(body.get("senha") or "")
+        if "@" not in email or len(email) > 254 or len(senha) < 8:
+            return self._json(400, {"error": "E-mail inválido ou senha com menos de 8 caracteres."})
+        uid = secrets.token_hex(16)
+        try:
+            with database.db() as conn:
+                conn.execute(
+                    "INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)",
+                    (uid, email, senha_hash(senha), iso()),
+                )
+        except sqlite3.IntegrityError:
+            return self._json(409, {"error": "Esse e-mail já está cadastrado."})
+        definir_cookie(self, sessao_token(uid))
+        return self._json(200, {"ok": True, "email": email})
+
+    def _entrar(self):
+        body = self._body()
+        email = str(body.get("email") or "").strip().lower()
+        senha = str(body.get("senha") or "")
+        with database.db() as conn:
+            row = conn.execute(
+                "SELECT id, password_hash FROM users WHERE email = ?", (email,)
+            ).fetchone()
+        if not row or not senha_valida(senha, row["password_hash"]):
+            return self._json(401, {"error": "E-mail ou senha incorretos."})
+        definir_cookie(self, sessao_token(row["id"]))
+        return self._json(200, {"ok": True, "email": email})
+
     def _api(self, parts):
         # HEAD responde como GET, só sem corpo (regra do HTTP).
         method = "GET" if self.command == "HEAD" else self.command
         path = parts.path
         params = parse_qs(parts.query)
 
+        if method == "POST" and path == "/api/register":
+            return self._registrar()
+        if method == "POST" and path == "/api/login":
+            return self._entrar()
+        if method == "POST" and path == "/api/logout":
+            definir_cookie(self, "", 0)
+            return self._json(200, {"ok": True})
+        if method == "GET" and path == "/api/me":
+            if not AUTH_ATIVO:
+                return self._json(200, {"autenticado": True, "modo": "local", "email": None})
+            uid = sessao_usuario(cookie_valor(self, COOKIE) or "")
+            email = None
+            if uid:
+                with database.db() as conn:
+                    row = conn.execute("SELECT email FROM users WHERE id = ?", (uid,)).fetchone()
+                    email = row["email"] if row else None
+            return self._json(200, {"autenticado": bool(email), "modo": "publico", "email": email})
+
         if method not in ("GET", "POST", "DELETE"):
             return self._json(405, {"error": "Método não permitido."})
         if method in ("POST", "DELETE") and not _origin_allowed(self):
             return self._json(403, {"error": "Origem não permitida."})
 
+        try:
+            uid = usuario_atual(self)
+        except NaoAutorizado:
+            return self._json(401, {"error": "Faça login para continuar.", "code": "UNAUTHORIZED"})
+
         if method == "GET" and path == "/api/status":
             with database.db() as conn:
-                items = conn.execute("SELECT COUNT(*) AS n FROM items").fetchone()["n"]
+                items = conn.execute(
+                    "SELECT COUNT(*) AS n FROM items WHERE user_id = ?", (uid,)
+                ).fetchone()["n"]
             payload = {
                 "configured": pluggy.has_credentials(),
                 "items": items,
@@ -583,11 +741,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, payload)
 
         if method == "POST" and path == "/api/connect-token":
-            return self._json(200, {"accessToken": pluggy.create_connect_token()})
+            token = pluggy.create_connect_token(client_user_id=pluggy_user_id(uid))
+            return self._json(200, {"accessToken": token})
 
         if method == "GET" and path == "/api/summary":
             month = _p(params, "month") or current_month()
-            return self._json(200, get_summary(month))
+            return self._json(200, get_summary(month, uid))
 
         if method == "GET" and path == "/api/accounts":
             with database.db() as conn:
@@ -595,7 +754,8 @@ class Handler(BaseHTTPRequestHandler):
                     """SELECT a.*, COALESCE(i.institution_name, '') AS institution,
                               i.image_url AS image_url
                        FROM accounts a LEFT JOIN items i ON i.id = a.item_id
-                       ORDER BY a.type, a.name"""
+                       WHERE a.user_id = ? ORDER BY a.type, a.name""",
+                (uid,),
                 ).fetchall()
             return self._json(200, {"results": [dict(r) for r in rows]})
 
@@ -603,7 +763,8 @@ class Handler(BaseHTTPRequestHandler):
             with database.db() as conn:
                 rows = conn.execute(
                     "SELECT DISTINCT substr(date, 1, 7) AS month FROM transactions "
-                    "ORDER BY month DESC LIMIT 36"
+                    "WHERE user_id = ? ORDER BY month DESC LIMIT 36",
+                    (uid,),
                 ).fetchall()
             return self._json(200, {"results": [r["month"] for r in rows]})
 
@@ -613,9 +774,9 @@ class Handler(BaseHTTPRequestHandler):
                 """SELECT COALESCE(NULLIF(category, ''), 'Sem categoria') AS category,
                           SUM(-amount) AS total
                    FROM transactions
-                   WHERE amount < 0 """
+                   WHERE user_id = ? AND amount < 0 """
             )
-            args = []
+            args = [uid]
             if month:
                 sql += "AND date LIKE ? "
                 args.append(month + "%")
@@ -625,21 +786,24 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"results": [dict(r) for r in rows]})
 
         if method == "GET" and path == "/api/transactions":
-            return self._json(200, list_transactions(params))
+            return self._json(200, list_transactions(params, uid))
 
         if method == "GET" and path == "/api/investments":
             with database.db() as conn:
                 rows = conn.execute(
                     """SELECT inv.*, COALESCE(i.institution_name, '') AS institution
                        FROM investments inv LEFT JOIN items i ON i.id = inv.item_id
-                       WHERE inv.status IS NULL OR inv.status = 'ACTIVE'
-                       ORDER BY inv.balance DESC"""
+                       WHERE inv.user_id = ? AND (inv.status IS NULL OR inv.status = 'ACTIVE')
+                       ORDER BY inv.balance DESC""",
+                (uid,),
                 ).fetchall()
             return self._json(200, {"results": [dict(r) for r in rows]})
 
         if method == "GET" and path == "/api/items":
             with database.db() as conn:
-                rows = conn.execute("SELECT * FROM items ORDER BY created_at").fetchall()
+                rows = conn.execute(
+                    "SELECT * FROM items WHERE user_id = ? ORDER BY created_at", (uid,)
+                ).fetchall()
             return self._json(200, {"results": [dict(r) for r in rows]})
 
         match = re.fullmatch(r"/api/items/([^/]+)/sync", path)
@@ -649,23 +813,38 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {"error": "ID de conexão inválido."})
             body = self._body()
             trigger = body.get("trigger", True) is not False
-            return self._json(200, sync_item(item_id, trigger))
+            return self._json(200, sync_item(item_id, trigger, uid))
 
         match = re.fullmatch(r"/api/items/([^/]+)", path)
         if method == "DELETE" and match:
             item_id = unquote(match.group(1))
             if not _valid_item_id(item_id):
                 return self._json(400, {"error": "ID de conexão inválido."})
+            with database.db() as conn:
+                if not conn.execute(
+                    "SELECT 1 FROM items WHERE id = ? AND user_id = ?", (item_id, uid)
+                ).fetchone():
+                    return self._json(404, {"error": "Conexão não encontrada."})
             try:
                 api_key = pluggy.get_api_key()
                 pluggy.delete_remote_item(item_id, api_key)
             except Exception as exc:
                 print(f"[aviso] falha ao remover item remoto ({item_id}): {exc}")
             with database.db() as conn:
-                conn.execute("DELETE FROM transactions WHERE item_id = ?", (item_id,))
-                conn.execute("DELETE FROM investments WHERE item_id = ?", (item_id,))
-                conn.execute("DELETE FROM accounts WHERE item_id = ?", (item_id,))
-                conn.execute("DELETE FROM items WHERE id = ?", (item_id,))
+                if not conn.execute(
+                    "SELECT 1 FROM items WHERE id = ? AND user_id = ?", (item_id, uid)
+                ).fetchone():
+                    return self._json(404, {"error": "Conexão não encontrada."})
+                conn.execute(
+                    "DELETE FROM transactions WHERE user_id = ? AND item_id = ?", (uid, item_id)
+                )
+                conn.execute(
+                    "DELETE FROM investments WHERE user_id = ? AND item_id = ?", (uid, item_id)
+                )
+                conn.execute(
+                    "DELETE FROM accounts WHERE user_id = ? AND item_id = ?", (uid, item_id)
+                )
+                conn.execute("DELETE FROM items WHERE id = ? AND user_id = ?", (item_id, uid))
             return self._json(200, {"ok": True})
 
         if path in self.READ_ROUTES:

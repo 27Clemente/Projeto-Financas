@@ -12,8 +12,16 @@ DATA_DIR.mkdir(exist_ok=True)
 DB_PATH = DATA_DIR / "financas.db"
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  created_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS items (
   id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL DEFAULT 'local',
   connector_id INTEGER,
   institution_name TEXT,
   image_url TEXT,
@@ -26,6 +34,7 @@ CREATE TABLE IF NOT EXISTS items (
 
 CREATE TABLE IF NOT EXISTS accounts (
   id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL DEFAULT 'local',
   item_id TEXT NOT NULL,
   type TEXT,
   subtype TEXT,
@@ -41,6 +50,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 
 CREATE TABLE IF NOT EXISTS transactions (
   id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL DEFAULT 'local',
   item_id TEXT NOT NULL,
   account_id TEXT,
   date TEXT,
@@ -54,6 +64,7 @@ CREATE TABLE IF NOT EXISTS transactions (
 
 CREATE TABLE IF NOT EXISTS investments (
   id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL DEFAULT 'local',
   item_id TEXT NOT NULL,
   name TEXT,
   code TEXT,
@@ -72,18 +83,37 @@ CREATE TABLE IF NOT EXISTS investments (
   updated_at TEXT
 );
 
+"""
+
+INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_tx_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_tx_account ON transactions(account_id);
 CREATE INDEX IF NOT EXISTS idx_tx_item ON transactions(item_id);
 CREATE INDEX IF NOT EXISTS idx_accounts_item ON accounts(item_id);
 CREATE INDEX IF NOT EXISTS idx_investments_item ON investments(item_id);
+CREATE INDEX IF NOT EXISTS idx_items_user ON items(user_id);
+CREATE INDEX IF NOT EXISTS idx_accounts_user ON accounts(user_id);
+CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_investments_user ON investments(user_id);
 """
+
+
+def _migrate(conn):
+    """Bancos antigos ganham a coluna user_id sem perder dados."""
+    for tabela in ("items", "accounts", "transactions", "investments"):
+        colunas = {r["name"] for r in conn.execute(f"PRAGMA table_info({tabela})")}
+        if "user_id" not in colunas:
+            conn.execute(
+                f"ALTER TABLE {tabela} ADD COLUMN user_id TEXT NOT NULL DEFAULT 'local'"
+            )
 
 
 def init_db():
     # with db() fecha a conexão; with connect() travaria o arquivo no Windows.
     with db() as conn:
         conn.executescript(SCHEMA)
+        _migrate(conn)
+        conn.executescript(INDEXES)
 
 
 def connect():

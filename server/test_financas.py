@@ -30,7 +30,9 @@ def check(nome, cond, detalhe=""):
 
 def seed(conn):
     conn.execute(
-        "INSERT INTO items VALUES (?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO items (id, connector_id, institution_name, image_url, status,"
+            " execution_status, error_message, last_synced_at, created_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?)",
         ("item-1", 200, "Banco Teste", None, "UPDATED", "SUCCESS", None, "2026-11-17T10:00:00Z", "2026-11-01T10:00:00Z"),
     )
     for row in [
@@ -53,7 +55,8 @@ def seed(conn):
     ]
     for tid, date, desc, amount, category in txs:
         conn.execute(
-            "INSERT INTO transactions VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO transactions (id, item_id, account_id, date, description, amount,"
+                " category, type, status, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (tid, "item-1", "acc-bank", date, desc, amount, category, "DEBIT", "POSTED", "2026-11-17T10:00:00Z"),
         )
     for iid, name, typ, balance, original, profit in [
@@ -70,9 +73,76 @@ def seed(conn):
         )
 
 
+def listar(params):
+    return app.list_transactions(params, "local")
+
+
+def test_auth_e_isolamento():
+    print("autenticacao e isolamento por usuario")
+    h = app.senha_hash("senha-teste")
+    check("senha verificada", app.senha_valida("senha-teste", h) is True)
+    check("senha errada rejeitada", app.senha_valida("outra", h) is False)
+    check("clientUserId local", app.pluggy_user_id("local") == "local-user")
+    check("clientUserId por pessoa", app.pluggy_user_id("abc") == "user-abc")
+
+    token = app.sessao_token("u1")
+    check("sessao valida", app.sessao_usuario(token) == "u1")
+    check("sessao adulterada rejeitada", app.sessao_usuario(token[:-1] + "0") is None)
+
+    with db.db() as conn:
+        conn.execute(
+            "INSERT INTO items (id, user_id, institution_name, status) VALUES (?,?,?,?)",
+            ("alheio", "outro", "Banco Alheio", "UPDATED"),
+        )
+        conn.execute(
+            "INSERT INTO accounts (id, user_id, item_id, type, balance, updated_at)"
+            " VALUES (?,?,?,?,?,?)",
+            ("conta-alheia", "outro", "alheio", "BANK", 9999.0, "2026-11-17T10:00:00Z"),
+        )
+    s = app.get_summary("2026-11", "local")
+    check("saldo alheio ignorado", s["bankBalance"] == 5000, s["bankBalance"])
+    check("itens alheios ignorados", s["items"] == 1, s["items"])
+    check("transacoes alheias ignoradas", listar({})["total"] == 6, listar({})["total"])
+    with db.db() as conn:
+        conn.execute("DELETE FROM items WHERE user_id = 'outro'")
+        conn.execute("DELETE FROM accounts WHERE user_id = 'outro'")
+
+
+def test_sync_item_novo():
+    print("item novo so entra com o dono certo")
+    origens = (
+        pluggy.get_api_key, pluggy.get_item, pluggy.list_accounts,
+        pluggy.iter_transactions, pluggy.list_investments,
+    )
+    pluggy.get_api_key = lambda: "chave-teste"
+    pluggy.get_item = lambda iid, key: {
+        "id": iid, "clientUserId": "user-abc" if iid == "novo-abc" else "user-xyz",
+        "connector": {"id": 1, "name": "Banco Exemplo"},
+        "executionStatus": "SUCCESS", "createdAt": "2026-11-01T10:00:00Z",
+    }
+    pluggy.list_accounts = lambda iid, key: []
+    pluggy.iter_transactions = lambda aid, key: iter([])
+    pluggy.list_investments = lambda iid, key: []
+    try:
+        r = app.sync_item("novo-abc", False, "abc")
+        check("item novo aceito", r["ok"] is True, r)
+        try:
+            app.sync_item("novo-xyz", False, "abc")
+            check("item de outro dono rejeitado", False)
+        except pluggy.PluggyError as e:
+            check("item de outro dono rejeitado", e.status == 404, e.status)
+    finally:
+        (
+            pluggy.get_api_key, pluggy.get_item, pluggy.list_accounts,
+            pluggy.iter_transactions, pluggy.list_investments,
+        ) = origens
+    with db.db() as conn:
+        conn.execute("DELETE FROM items WHERE id IN ('novo-abc','novo-xyz')")
+
+
 def test_summary():
     print("resumo do mês")
-    s = app.get_summary("2026-11")
+    s = app.get_summary("2026-11", "local")
     check("saldo bancário", s["bankBalance"] == 5000, s["bankBalance"])
     check("fatura de cartão separada", s["creditBalance"] == -1200, s["creditBalance"])
     check("investido", s["invested"] == 17000, s["invested"])
@@ -83,9 +153,9 @@ def test_summary():
     check("conta só de novembro", s["transactions"] == 5, s["transactions"])
     check("percentual", s["profitRate"] and abs(s["profitRate"] - 1300 / 13700 * 100) < 1e-9, s["profitRate"])
 
-    out = app.get_summary("2026-10")
+    out = app.get_summary("2026-10", "local")
     check("mês anterior isolado", abs(out["expenses"] - 45.0) < 1e-9, out["expenses"])
-    vazio = app.get_summary("1999-01")
+    vazio = app.get_summary("1999-01", "local")
     check("mês sem dados zera", vazio["expenses"] == 0 and vazio["transactions"] == 0, vazio)
 
 
@@ -96,30 +166,30 @@ def q(**kwargs):
 
 def test_transactions():
     print("filtros e paginação de transações")
-    r = app.list_transactions(q(month="2026-11"))
+    r = listar(q(month="2026-11"))
     check("total do mês", r["total"] == 5, r["total"])
     check("ordem decrescente por data", r["results"][0]["date"] >= r["results"][-1]["date"], r["results"][0])
 
-    r = app.list_transactions(q(month="2026-11", limit=2))
+    r = listar(q(month="2026-11", limit=2))
     check("limit respeitado", len(r["results"]) == 2 and r["limit"] == 2, r["limit"])
 
-    r = app.list_transactions(q(month="2026-11", limit=50, offset=2))
+    r = listar(q(month="2026-11", limit=50, offset=2))
     check("offset", len(r["results"]) == 3, len(r["results"]))
 
-    r = app.list_transactions(q(limit=99999))
+    r = listar(q(limit=99999))
     check("limit clamp em 500", r["limit"] == 500, r["limit"])
-    r = app.list_transactions(q(limit="abc", offset="xyz"))
+    r = listar(q(limit="abc", offset="xyz"))
     check("parâmetro inválido cai no padrão", r["limit"] == 50 and r["offset"] == 0, r)
 
-    r = app.list_transactions({"month": ["2026-11"], "type": ["in"]})
+    r = listar({"month": ["2026-11"], "type": ["in"]})
     check("tipo entrada", r["total"] == 1, r["total"])
-    check("tipo saída", app.list_transactions({"type": ["out"]})["total"] == 5)
-    check("busca por descrição", app.list_transactions({"q": ["Uber"]})["total"] == 1)
-    check("busca por categoria", app.list_transactions({"q": ["Groceries"]})["total"] == 1)
-    check("filtro de categoria", app.list_transactions({"category": ["Groceries"]})["total"] == 1)
-    check("categoria vazia vira 'Sem categoria'", app.list_transactions({"category": ["Sem categoria"]})["total"] == 1)
-    check("filtro de conta", app.list_transactions({"accountId": ["acc-credit"]})["total"] == 0)
-    check("conta com instituição junta", app.list_transactions({})["results"][0]["institution"] == "Banco Teste")
+    check("tipo saída", listar({"type": ["out"]})["total"] == 5)
+    check("busca por descrição", listar({"q": ["Uber"]})["total"] == 1)
+    check("busca por categoria", listar({"q": ["Groceries"]})["total"] == 1)
+    check("filtro de categoria", listar({"category": ["Groceries"]})["total"] == 1)
+    check("categoria vazia vira 'Sem categoria'", listar({"category": ["Sem categoria"]})["total"] == 1)
+    check("filtro de conta", listar({"accountId": ["acc-credit"]})["total"] == 0)
+    check("conta com instituição junta", listar({})["results"][0]["institution"] == "Banco Teste")
 
 
 def test_include_sandbox():
@@ -203,7 +273,9 @@ def test_multi_item_isolation():
     print("múltiplos bancos isolados na sincronização")
     with db.db() as conn:
         conn.execute(
-            "INSERT INTO items VALUES (?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO items (id, connector_id, institution_name, image_url, status,"
+            " execution_status, error_message, last_synced_at, created_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?)",
             ("item-2", 999, "Banco Dois", None, "UPDATED", "SUCCESS", None,
              "2026-11-17T10:00:00Z", "2026-11-01T10:00:00Z"),
         )
@@ -215,7 +287,8 @@ def test_multi_item_isolation():
              "BRL", "Fulano", None, None, "2026-11-17T10:00:00Z"),
         )
         conn.execute(
-            "INSERT INTO transactions VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO transactions (id, item_id, account_id, date, description, amount,"
+                " category, type, status, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
             ("tx-b2", "item-2", "acc-b2", "2026-11-16T12:00:00Z", "Gasto Dois",
              -99.0, "Other", "DEBIT", "POSTED", "2026-11-17T10:00:00Z"),
         )
@@ -231,7 +304,7 @@ def test_multi_item_isolation():
     pluggy.iter_transactions = lambda acc_id, key: iter(transacoes)
     pluggy.list_investments = lambda item_id, key: []
     try:
-        app.pull_item_data("item-1", "fake-key")
+        app.pull_item_data("item-1", "fake-key", "local")
     finally:
         pluggy.list_accounts, pluggy.iter_transactions, pluggy.list_investments = orig
 
@@ -287,6 +360,8 @@ def main():
     with db.db() as conn:
         seed(conn)
     try:
+        test_auth_e_isolamento()
+        test_sync_item_novo()
         test_summary()
         test_transactions()
         test_include_sandbox()
