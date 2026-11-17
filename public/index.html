@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-type="software" data-radius="sharp">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="page-type" content="software" />
+  <meta name="site-kind" content="software" />
+  <meta name="theme-color" content="#f7f9fa" />
+  <meta name="description" content="Saldo, gastos e investimentos das suas contas bancárias em um demonstrativo local e privado." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%231f3038'/%3E%3Ctext x='16' y='21' font-family='monospace' font-size='13' fill='%23f7f9fa' text-anchor='middle'%3EMF%3C/text%3E%3C/svg%3E" />
+  <title>Minhas Finanças — demonstrativo das suas contas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Funnel+Display:wght@400;500&family=Funnel+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="/appearance-init.js"></script>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div id="progress" class="progress" hidden></div>
+
+  <header class="masthead">
+    <div class="wrap masthead-inner">
+      <div class="brand">
+        <span class="brand-icon" aria-hidden="true">MF</span>
+        <div>
+          <h1>Minhas Finanças</h1>
+          <p class="subtitle" id="subtitle">Demonstrativo local · Open Finance</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="btn-sync-all" class="btn">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/></svg>
+          Sincronizar tudo
+        </button>
+        <button id="btn-connect" class="btn btn-primary">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          Conectar banco
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div id="banner" class="banner" hidden></div>
+
+    <nav class="tabs" aria-label="Seções">
+      <div class="tabs-inner">
+        <button class="tab active" data-tab="painel"><span class="tab-num">01</span> Painel</button>
+        <button class="tab" data-tab="gastos"><span class="tab-num">02</span> Gastos</button>
+        <button class="tab" data-tab="investimentos"><span class="tab-num">03</span> Investimentos</button>
+        <button class="tab" data-tab="conexoes"><span class="tab-num">04</span> Conexões</button>
+        <button class="tab" data-tab="aparencia"><span class="tab-num">05</span> Aparência</button>
+      </div>
+    </nav>
+  </div>
+
+  <main class="wrap">
+    <!-- PAINEL -->
+    <section id="tab-painel" class="panel">
+      <div class="panel-head">
+        <div>
+          <span class="eyebrow">Visão consolidada</span>
+          <h2>Seu dinheiro, em uma página.</h2>
+        </div>
+        <div class="head-note" id="acc-summary"></div>
+      </div>
+
+      <div class="statement" id="cards-painel"></div>
+
+      <div class="card">
+        <h2>Saldos por instituição</h2>
+        <div id="accounts-list" class="list"></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h2>Gastos por categoria <span class="muted" id="cat-month"></span></h2>
+          <div id="category-bars" class="bars"></div>
+        </div>
+        <div class="card">
+          <h2>Últimos lançamentos</h2>
+          <div id="recent-list" class="list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- GASTOS -->
+    <section id="tab-gastos" class="panel" hidden>
+      <div class="panel-head">
+        <div>
+          <span class="eyebrow">Fluxo do mês</span>
+          <h2>Para onde foi o dinheiro.</h2>
+        </div>
+        <div class="head-note">Filtros e busca abaixo</div>
+      </div>
+
+      <div class="card">
+        <div class="filters">
+          <label>Mês
+            <select id="f-month"></select>
+          </label>
+          <label>Tipo
+            <select id="f-type">
+              <option value="">Todos</option>
+              <option value="out">Saídas</option>
+              <option value="in">Entradas</option>
+            </select>
+          </label>
+          <label>Categoria
+            <select id="f-category"><option value="">Todas</option></select>
+          </label>
+          <label>Buscar
+            <input id="f-q" type="search" placeholder="Descrição ou categoria" />
+          </label>
+        </div>
+
+        <div class="totals" id="gastos-totals"></div>
+        <div id="tx-list" class="list"></div>
+        <div class="list-footer">
+          <span id="tx-count" class="muted"></span>
+          <button id="btn-more" class="btn" hidden>Carregar mais</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- INVESTIMENTOS -->
+    <section id="tab-investimentos" class="panel" hidden>
+      <div class="panel-head">
+        <div>
+          <span class="eyebrow">Posições ativas</span>
+          <h2>O que está rendendo.</h2>
+        </div>
+      </div>
+      <div class="statement" id="cards-invest"></div>
+      <div class="card">
+        <h2>Posições</h2>
+        <div id="inv-list" class="list"></div>
+      </div>
+    </section>
+
+    <!-- CONEXÕES -->
+    <section id="tab-conexoes" class="panel" hidden>
+      <div class="panel-head">
+        <div>
+          <span class="eyebrow">Open Finance</span>
+          <h2>Bancos conectados.</h2>
+        </div>
+      </div>
+
+      <div id="setup-help" class="card setup" hidden>
+        <h2>Configurar o acesso aos bancos</h2>
+        <ol>
+          <li>Crie uma conta em <a href="https://dashboard.pluggy.ai" target="_blank" rel="noopener">dashboard.pluggy.ai</a>.</li>
+          <li>Em <b>Applications</b>, use <b>Go to production</b> para criar a aplicação de bancos reais. Aplicações em Development só mostram conectores de teste.</li>
+          <li>Crie um arquivo <code>.env</code> nesta pasta com <code>PLUGGY_CLIENT_ID</code> e <code>PLUGGY_CLIENT_SECRET</code>.</li>
+          <li>Em <b>Customization</b>, habilite as instituições que devem aparecer no widget.</li>
+          <li>Reinicie o servidor com <code>python server/app.py</code> e clique em <b>Conectar banco</b>.</li>
+        </ol>
+        <p class="muted">Sem banco real: os conectores de teste usam usuário <code>user-ok</code>, senha <code>password-ok</code> e token <code>123456</code>.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Suas conexões</h2>
+          <div class="head-right">
+            <span id="conn-mode" class="muted"></span>
+            <button id="btn-connect-2" class="btn btn-primary">
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              Conectar banco
+            </button>
+          </div>
+        </div>
+        <div id="items-list" class="list"></div>
+      </div>
+    </section>
+
+    <!-- APARÊNCIA -->
+    <section id="tab-aparencia" class="panel" hidden>
+      <div class="panel-head">
+        <div>
+          <span class="eyebrow">Preferências locais</span>
+          <h2>Como a tela aparece.</h2>
+        </div>
+        <div class="head-note">Salvo neste navegador</div>
+      </div>
+
+      <div class="appearance">
+        <div class="card">
+          <div class="card-head"><h2>Tema</h2><span class="head-note">fundo e contraste</span></div>
+          <div class="options" data-group="tema">
+            <button class="option" data-value="claro" aria-pressed="true">
+              <span class="swatch swatch-claro"></span><span>Claro</span>
+            </button>
+            <button class="option" data-value="escuro" aria-pressed="false">
+              <span class="swatch swatch-escuro"></span><span>Escuro</span>
+            </button>
+            <button class="option" data-value="preto" aria-pressed="false">
+              <span class="swatch swatch-preto"></span><span>Preto</span>
+            </button>
+            <button class="option" data-value="papel" aria-pressed="false">
+              <span class="swatch swatch-papel"></span><span>Papel</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2>Tipografia</h2><span class="head-note">fonte da interface</span></div>
+          <div class="options" data-group="fonte">
+            <button class="option" data-value="funnel" aria-pressed="true">
+              <span class="swatch-letra letra-funnel">Aa</span><span>Funnel</span>
+            </button>
+            <button class="option" data-value="plex" aria-pressed="false">
+              <span class="swatch-letra letra-plex">Aa</span><span>Plex</span>
+            </button>
+            <button class="option" data-value="sistema" aria-pressed="false">
+              <span class="swatch-letra letra-sistema">Aa</span><span>Sistema</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2>Destaque</h2><span class="head-note">botões, abas e barras</span></div>
+          <div class="options" data-group="destaque">
+            <button class="option" data-value="teal" aria-pressed="true">
+              <span class="swatch swatch-teal"></span><span>Verde-azul</span>
+            </button>
+            <button class="option" data-value="azul" aria-pressed="false">
+              <span class="swatch swatch-azul"></span><span>Azul</span>
+            </button>
+            <button class="option" data-value="tijolo" aria-pressed="false">
+              <span class="swatch swatch-tijolo"></span><span>Tijolo</span>
+            </button>
+            <button class="option" data-value="roxo" aria-pressed="false">
+              <span class="swatch swatch-roxo"></span><span>Roxo</span>
+            </button>
+            <button class="option" data-value="vermelho" aria-pressed="false">
+              <span class="swatch swatch-vermelho"></span><span>Vermelho</span>
+            </button>
+            <button class="option" data-value="limao" aria-pressed="false">
+              <span class="swatch swatch-limao"></span><span>Limão</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2>Movimento</h2><span class="head-note">animações da interface</span></div>
+          <div class="options" data-group="movimento">
+            <button class="option" data-value="on" aria-pressed="true"><span>Ligado</span></button>
+            <button class="option" data-value="off" aria-pressed="false"><span>Desligado</span></button>
+          </div>
+        </div>
+
+        <div class="appearance-foot">
+          <button id="btn-reset-aparencia" class="btn">Restaurar padrão</button>
+          <span class="muted">Nada disso é enviado ao servidor.</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap foot-inner">
+      <span>Minhas Finanças · dados no seu computador</span>
+      <span>Open Finance via Pluggy · nenhuma credencial bancária é armazenada aqui</span>
+    </div>
+  </footer>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
