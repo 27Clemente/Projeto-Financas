@@ -43,7 +43,28 @@ Acesse **http://127.0.0.1:3000** e clique em **Conectar banco**.
 
 O ambiente de desenvolvimento utiliza instituições de teste. Para conectar bancos reais, é necessário habilitar o ambiente de produção no Pluggy.
 
-> 🧪 Mesmo em produção, dá para testar sem mexer no banco: em **Conexões**, ligue o interruptor **Mostrar bancos de teste**. Os conectores sandbox usam `user-ok` / `password-ok` / `123456` e a escolha fica salva no navegador.
+## 🏦 Como conectar um banco de teste
+
+Não precisa ter conta bancária nem dinheiro real. O Pluggy oferece instituições sandbox só para testar a integração.
+
+1. Abra o app em **http://127.0.0.1:3000** e vá na aba **Conexões**.
+2. Se a sua aplicação no Pluggy for de **produção**, ligue o interruptor **Mostrar bancos de teste**. Se for de desenvolvimento, os conectores sandbox já aparecem e você pode pular este passo.
+3. Clique em **Conectar banco**.
+4. Escolha um conector de teste, como **Pluggy Bank** ou **Meu Pluggy**.
+5. Na tela de login do banco, use:
+
+   | Campo | Valor |
+   | --- | --- |
+   | Usuário | `user-ok` |
+   | Senha | `password-ok` |
+   | Token MFA (quando pedir) | `123456` |
+
+6. Autorize a conexão. O app puxa os dados automaticamente e já abre o Painel com saldos, transações e investimentos de exemplo.
+7. Em **Conexões** você pode usar **Sincronizar** para atualizar ou **Remover** para apagar o banco de teste.
+
+> Se aparecer `Essa conta já está conectada`, é porque o Pluggy ainda tem a conexão antiga. Vá em **Conexões** e clique em **Sincronizar** nela, sem criar outra.
+
+> 🧪 O interruptor fica salvo no navegador, então na próxima vez você não precisa ligar de novo.
 
 ## 🧪 Testes
 
