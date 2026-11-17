@@ -125,6 +125,7 @@ async function api(path, opts = {}) {
     /* resposta sem JSON */
   }
   if (!res.ok) {
+    if (data.code === 'UNAUTHORIZED') $('#login').hidden = false;
     const msg = String(data.error || data.message || '').trim();
     throw new Error(msg ? ptError({ message: msg, codeDescription: data.code }) : `Erro ${res.status}`);
   }
@@ -754,6 +755,33 @@ async function connect() {
   }
 }
 
+/* sessão */
+
+async function verificarSessao() {
+  let eu;
+  try {
+    eu = await api('/api/me');
+  } catch {
+    $('#login').hidden = false;
+    return false;
+  }
+  state.eu = eu;
+  if (!eu.autenticado) {
+    $('#login').hidden = false;
+    return false;
+  }
+  $('#login').hidden = true;
+  const sair = $('#btn-sair');
+  if (sair) sair.hidden = eu.modo !== 'publico';
+  return true;
+}
+
+function erroLogin(mensagem) {
+  const el = $('#login-erro');
+  el.textContent = mensagem || '';
+  el.hidden = !mensagem;
+}
+
 /* inicialização */
 
 async function init() {
@@ -823,8 +851,50 @@ async function init() {
     }, 350);
   };
 
-  await refreshStatus();
-  showTab('painel');
+  $('#login-form').onsubmit = async (e) => {
+    e.preventDefault();
+    erroLogin('');
+    const email = $('#login-email').value.trim();
+    const senha = $('#login-senha').value;
+    try {
+      await api('/api/login', { method: 'POST', body: { email, senha } });
+      if (await verificarSessao()) {
+        await refreshStatus();
+        showTab('painel');
+      }
+    } catch (err) {
+      erroLogin(err.message);
+    }
+  };
+
+  $('#btn-criar').onclick = async () => {
+    erroLogin('');
+    const email = $('#login-email').value.trim();
+    const senha = $('#login-senha').value;
+    try {
+      await api('/api/register', { method: 'POST', body: { email, senha } });
+      if (await verificarSessao()) {
+        await refreshStatus();
+        showTab('painel');
+      }
+    } catch (err) {
+      erroLogin(err.message);
+    }
+  };
+
+  $('#btn-sair').onclick = async () => {
+    try {
+      await api('/api/logout', { method: 'POST' });
+    } catch {
+      /* segue recarregando */
+    }
+    location.reload();
+  };
+
+  if (await verificarSessao()) {
+    await refreshStatus();
+    showTab('painel');
+  }
 }
 
 init().catch((e) => toast(e.message, true));

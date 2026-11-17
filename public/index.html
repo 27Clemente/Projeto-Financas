@@ -36,6 +36,7 @@
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
           Conectar banco
         </button>
+        <button id="btn-sair" class="btn" hidden>Sair</button>
       </div>
     </div>
   </header>
@@ -273,6 +274,27 @@
       <span>Open Finance via Pluggy · nenhuma credencial bancária é armazenada aqui</span>
     </div>
   </footer>
+
+  <div id="login" class="login-overlay" hidden>
+    <div class="login-card">
+      <span class="brand-icon" aria-hidden="true">MF</span>
+      <h2 id="login-titulo">Entrar</h2>
+      <p class="muted">Cada pessoa vê só as próprias contas e conexões.</p>
+      <form id="login-form">
+        <label>E-mail
+          <input id="login-email" type="email" autocomplete="email" required />
+        </label>
+        <label>Senha
+          <input id="login-senha" type="password" autocomplete="current-password" minlength="8" required />
+        </label>
+        <div id="login-erro" class="login-erro" hidden></div>
+        <div class="login-acoes">
+          <button type="submit" id="btn-entrar" class="btn btn-primary">Entrar</button>
+          <button type="button" id="btn-criar" class="btn">Criar conta</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <div id="toast" class="toast" role="status" hidden></div>
 

@@ -1180,6 +1180,88 @@ html[data-motion="off"] *::after {
   outline-offset: 2px;
 }
 
+/* login */
+
+.login-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 420px;
+  padding: 32px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.login-card h2 {
+  margin: 18px 0 4px;
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 400;
+  letter-spacing: -0.03em;
+}
+
+.login-card p {
+  margin: 0 0 24px;
+  font-size: 13px;
+}
+
+.login-card form label {
+  display: block;
+  margin-bottom: 16px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.login-card input {
+  display: block;
+  width: 100%;
+  margin-top: 7px;
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--font-text);
+  font-size: 15px;
+  color: var(--ink);
+  text-transform: none;
+}
+
+.login-card input:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+
+.login-erro {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--neg);
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.login-acoes {
+  display: flex;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.login-acoes .btn {
+  flex: 1;
+}
+
 @media (max-width: 560px) {
   .card-head {
     flex-direction: column;
