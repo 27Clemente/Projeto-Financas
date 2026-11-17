@@ -1,81 +1,65 @@
-# Minhas Finanças
+# 💰 Minhas Finanças
 
-Um painel local pra ver saldo, gastos e investimentos num lugar só. Os dados chegam
-pelos seus bancos via Pluggy (Open Finance) e ficam num SQLite em `data/financas.db`.
-Não tem nuvem, não tem login, não tem telemetria. Sua senha bancária é digitada no
-widget do Pluggy e nunca passa por aqui.
+Painel financeiro para acompanhar saldos, gastos, cartões e investimentos em um só lugar, com integração bancária pelo **Pluggy**.
 
-## Rodando
+A aplicação roda localmente e armazena os dados em **SQLite**. A sincronização é iniciada pelo usuário e depende das informações disponibilizadas por cada instituição.
 
-Só precisa de Python 3.10+. Não tem dependência pra instalar.
+> 🚧 Projeto pessoal em desenvolvimento.
+
+## ✨ Funcionalidades
+
+- Resumo de saldos, faturas e investimentos.
+- Consulta de transações com filtros e busca.
+- Conexão, sincronização e remoção de bancos.
+- Personalização de tema, fontes e cores.
+
+## 🛠️ Tecnologias
+
+**Python • JavaScript • HTML • CSS • SQL (SQLite) • API Pluggy**
+
+## 🚀 Como executar
+
+Requer **Python 3.10+**, sem dependências Python externas.
+
+```bash
+git clone https://github.com/27Clemente/Projeto-Financas.git
+cd Projeto-Financas
+```
+
+Para conectar bancos, obtenha suas credenciais no [Pluggy](https://dashboard.pluggy.ai) e crie um arquivo `.env` na raiz:
+
+```env
+PLUGGY_CLIENT_ID=seu_client_id
+PLUGGY_CLIENT_SECRET=seu_client_secret
+```
+
+Inicie o servidor:
 
 ```bash
 python server/app.py
 ```
 
-Depois abre `http://127.0.0.1:3000`. O servidor escuta só em `127.0.0.1`, então
-ninguém na rede consegue acessar.
+Acesse **http://127.0.0.1:3000** e clique em **Conectar banco**.
 
-## Ligando os bancos
+O ambiente de desenvolvimento utiliza instituições de teste. Para conectar bancos reais, é necessário habilitar o ambiente de produção no Pluggy.
 
-Cria uma conta no [dashboard do Pluggy](https://dashboard.pluggy.ai), vai em
-Applications → **Go to production** e copia o Client ID e o Client Secret. Joga num
-arquivo `.env` na raiz do projeto:
-
-```
-PLUGGY_CLIENT_ID=o_seu_id
-PLUGGY_CLIENT_SECRET=o_seu_secret
-```
-
-Reinicia o servidor, clica em **Conectar banco**, escolhe a instituição e autoriza.
-O app puxa uns 365 dias de transações, saldos e investimentos. Depois é só usar
-**Sincronizar tudo** quando quiser atualizar.
-
-Se você criar a aplicação em Development, o widget só mostra os bancos de teste.
-O login deles é `user-ok` / `password-ok` / `123456`. O app tenta detectar o modo
-sozinho, mas se ele se confundir (acontece quando você habilitou poucos bancos),
-coloca `PLUGGY_MODE=production` e `PLUGGY_INCLUDE_SANDBOX=0` no `.env`.
-
-## O que da pra fazer
-
-O Painel traz o consolidado: saldo em conta, fatura de cartão separada, total
-investido e o rendimento. Em Gastos dá pra filtrar por mês, tipo, categoria e
-buscar pela descrição. Investimentos mostra as posições ativas com lucro e percentual
-sobre o aplicado. Em Conexões você sincroniza ou remove cada banco. E em Aparência
-você escolhe tema, fonte, cor de destaque e se quer animação — isso fica salvo no
-próprio navegador.
-
-## Tests
+## 🧪 Testes
 
 ```bash
 python server/test_financas.py
 ```
 
-Bate os cálculos do resumo, os filtros, a paginação e as validações de segurança.
-Usa um SQLite temporário, então não mexe nos seus dados.
+Verificam cálculos, filtros, paginação e validações de segurança usando um banco temporário.
 
-## Algumas coisas que vale saber
+## 🔒 Privacidade
 
-Dá pra conectar quantos bancos quiser. O connect token vai com `avoidDuplicates`
-desligado justamente por causa disso — se você quiser o comportamento antigo, de
-recusar duplicata, põe `PLUGGY_AVOID_DUPLICATES=1` no `.env`.
+Os dados ficam em `data/financas.db`, e o servidor aceita acesso apenas pela própria máquina. A conexão bancária utiliza o widget do Pluggy.
 
-Nem toda instituição informa o lucro de uma posição via Open Finance. Quando falta,
-o app calcula `valor atual − aplicado`. Onde o campo oficial vem, ele usa o oficial.
+O `.env` e a pasta `data/` estão no `.gitignore`. A aplicação ainda não possui autenticação e foi desenvolvida para uso pessoal e local.
 
-Cartão de crédito aparece separado: o saldo da conta tipo CREDIT é a fatura em
-aberto, não dinheiro disponível. As categorias vêm em inglês do Pluggy; as mais
-comuns eu traduzi.
+## 👨‍💻 Autor
 
-O `.env` e a pasta `data/` estão no `.gitignore`. Se quiser apagar tudo, fecha o
-app e deleta `data/`.
+Desenvolvido por **Thomas Clemente**, estudante de Cibersegurança na FIAP.
 
-## Onde está o quê
-
-- `server/app.py` — servidor, rotas e sincronização
-- `server/pluggy.py` — cliente da API do Pluggy
-- `server/db.py` — esquema do SQLite
-- `public/` — interface, estilo e o script da aba de aparência
-
-Ainda quero colocar autenticação e banco por usuário se um dia isso virar algo
-pra mais de uma pessoa. Por enquanto é um app de casa, como os meus dados pedem.
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-0A66C2?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/thomas-clemente/)
+[![GitHub](https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/27Clemente)
