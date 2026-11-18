@@ -1277,3 +1277,6 @@ html[data-motion="off"] *::after {
   }
 }
 
+
+/* Modo demonstracao: modo teste e fixo, esconde o controle de sandbox. */
+label[for="chk-sandbox"] { display: none !important; }
