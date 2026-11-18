@@ -16,8 +16,8 @@ services:
         sync: false
       - key: PLUGGY_CLIENT_SECRET
         sync: false
+      # Modo de demonstracao: aplicacao Development so enxerga conectores sandbox.
       - key: PLUGGY_MODE
-        value: production
-      # Permite que avaliadores conectem bancos de teste (sandbox) sem conta real.
+        value: development
       - key: PLUGGY_INCLUDE_SANDBOX
         value: "1"

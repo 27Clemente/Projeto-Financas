@@ -188,10 +188,9 @@ function sandboxSalvo() {
 }
 
 function sandboxHabilitado() {
-  const salvo = sandboxSalvo();
-  if (salvo === 'on') return true;
-  if (salvo === 'off') return false;
-  return Boolean(state.status && state.status.includeSandbox);
+  // Modo de demonstracao: somente bancos de teste (sandbox).
+  // Nunca permite conectar instituicoes reais, independente da preferencia salva.
+  return true;
 }
 
 /* estado e chrome */
@@ -795,7 +794,11 @@ async function init() {
 
   const chkSandbox = $('#chk-sandbox');
   if (chkSandbox) {
-    chkSandbox.checked = sandboxHabilitado();
+    // Demonstracao: modo teste e fixo, esconde o controle que mudaria isso.
+    chkSandbox.checked = true;
+    chkSandbox.disabled = true;
+    const lbl = chkSandbox.closest('label');
+    if (lbl) lbl.hidden = true;
     chkSandbox.onchange = () => {
       try {
         localStorage.setItem(CHAVE_SANDBOX, chkSandbox.checked ? 'on' : 'off');
