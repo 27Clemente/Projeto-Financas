@@ -4,6 +4,14 @@ Um painel local pra acompanhar saldo, gastos, cartões e investimentos num lugar
 
 A conexão com os bancos é feita pelo Pluggy, e os dados ficam salvos em SQLite no computador. Pra atualizar as informações, é só usar a opção de sincronizar.
 
+## Demo ao vivo
+
+[**Acesse a demonstracao no Render**](https://minhas-financas-5dcs.onrender.com)
+
+A versao publicada roda em modo de demonstracao: apenas bancos de teste (sandbox) do Pluggy podem ser conectados, com dados ficticios. Crie uma conta com qualquer e-mail e senha (minimo de 8 caracteres) para explorar.
+
+Para usar com seus proprios dados, rode o projeto localmente (instrucoes abaixo).
+
 ## O que dá pra fazer
 
 - Ver o saldo das contas, faturas e investimentos.
