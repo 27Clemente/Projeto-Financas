@@ -24,16 +24,27 @@ cd Projeto-Financas
 
 Crie uma conta no [Pluggy](https://dashboard.pluggy.ai), pegue o Client ID e o Client Secret da sua aplicação e coloque num arquivo `.env` na raiz do projeto:
 
+Copie o modelo `.env.example` para `.env` e preencha seus dados (o `.env` esta no `.gitignore` e nunca vai para o GitHub):
+
+```bash
+copy .env.example .env
+```
+
 ```env
 PLUGGY_CLIENT_ID=seu_client_id
 PLUGGY_CLIENT_SECRET=seu_client_secret
+APP_SECRET=uma_chave_longa_e_aleatoria
 ```
+
+A variavel `APP_SECRET` ativa o login e assina os cookies de sessao.
 
 Depois, inicie o servidor:
 
 ```bash
 python server/app.py
 ```
+
+No Windows, voce tambem pode dar duplo clique em `iniciar.bat`.
 
 Abra `http://127.0.0.1:3000` no navegador.
 
