@@ -158,10 +158,7 @@ def current_month():
     d = datetime.now().strftime("%Y-%m")
     return d
 
-
-# ---------------------------------------------------------------------------
 # Sincronização: baixa os dados do Pluggy e grava no SQLite local
-# ---------------------------------------------------------------------------
 
 def upsert_item(conn, item, user_id):
     connector = item.get("connector") or {}
@@ -202,7 +199,7 @@ def pull_item_data(item_id, api_key, user_id):
     investments = pluggy.list_investments(item_id, api_key)
 
     with database.db() as conn:
-        # --- Contas ---
+        # Contas 
         for acc in accounts:
             credit = acc.get("creditData") or {}
             conn.execute(
@@ -235,7 +232,7 @@ def pull_item_data(item_id, api_key, user_id):
                 ),
             )
 
-        # --- Transações (cursor /v2) ---
+        # Transações
         for account_id, batches in zip([a["id"] for a in accounts], transactions_batches):
             for batch in batches:
                 for tx in batch:
@@ -263,7 +260,7 @@ def pull_item_data(item_id, api_key, user_id):
                         ),
                     )
 
-        # --- Investimentos ---
+        # Investimentos
         for inv in investments:
             conn.execute(
                 """INSERT INTO investments (id, user_id, item_id, name, code, type, subtype, balance,
@@ -390,10 +387,7 @@ def sync_item(item_id, trigger, user_id):
         )
     return {"ok": True, "status": execution_status or "SUCCESS"}
 
-
-# ---------------------------------------------------------------------------
 # Consultas de leitura
-# ---------------------------------------------------------------------------
 
 def get_summary(month, user_id):
     with database.db() as conn:
@@ -539,11 +533,7 @@ def list_transactions(params, user_id):
         "results": [dict(r) for r in rows],
     }
 
-
-# ---------------------------------------------------------------------------
 # Servidor HTTP
-# ---------------------------------------------------------------------------
-
 class Handler(BaseHTTPRequestHandler):
     server_version = "Financas/0.1"
 
@@ -645,8 +635,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as resp_exc:  # noqa: BLE001 - falha ao responder
                 print(f"[erro] falha ao responder: {resp_exc!r}")
 
-    # ---------------- rotas da API ----------------
-
+    # Rotas da API 
     # Rotas de leitura: usadas para responder 405 (em vez de 404) quando o
     # método não combina com a rota.
     READ_ROUTES = {
@@ -851,7 +840,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(405, {"error": "Método não permitido."})
         return self._json(404, {"error": "Rota não encontrada."})
 
-    # ---------------- arquivos estáticos ----------------
+    # Arquivos estáticos
 
     def _static(self, path):
         rel = "index.html" if path == "/" else unquote(path.lstrip("/"))
