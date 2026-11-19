@@ -2,7 +2,7 @@
 
 Uso:  python server/test_financas.py
 
-Cria um SQLite temporário (não toca em data/financas.db), semeia dados de
+Cria um SQLite temporário (não toca em data/financas.db), cria dados de
 exercício e confere os cálculos de resumo, filtros e paginação.
 """
 
